@@ -6,10 +6,13 @@
     "install:all": "npm install --prefix backend && npm install --prefix frontend",
     "build:frontend": "npm run build --prefix frontend",
     "build:backend": "npm run build --prefix backend",
-    "seed": "npx --prefix backend prisma db push && npx --prefix backend tsx prisma/seed.ts",
+    "seed": "npm run prisma:push --prefix backend && npm run prisma:seed --prefix backend",
     "build": "npm run install:all && npm run build:frontend && npm run build:backend && npm run seed",
     "render:build": "npm run build",
     "start": "node backend/dist/index.js"
+  },
+  "prisma": {
+    "schema": "backend/prisma/schema.prisma"
   },
   "keywords": [
     "examination",
