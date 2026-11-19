@@ -1,0 +1,27 @@
+# Isolated Sandbox Execution Container for CampusExam AI
+FROM ubuntu:22.04
+
+# Avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install essential compilers and runtimes: C++ (g++-11), Python 3.10, OpenJDK 17
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    g++ \
+    python3 \
+    python3-pip \
+    openjdk-17-jdk-headless \
+    coreutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create unprivileged runner user
+RUN useradd -m -s /bin/bash sandbox && \
+    mkdir -p /sandbox/workspace && \
+    chown -R sandbox:sandbox /sandbox
+
+USER sandbox
+WORKDIR /sandbox/workspace
+
+# Non-root execution with resource constraints applied at docker run:
+# docker run --rm -m 128m --cpus="0.5" --network none -v $(pwd):/sandbox/workspace:ro ...
+CMD ["/bin/bash"]

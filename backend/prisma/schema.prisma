@@ -1,0 +1,396 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. User & Authentication
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  passwordHash   String
+  name           String
+  role           String          @default("STUDENT") // ADMIN, FACULTY, STUDENT
+  avatarUrl      String?
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  studentProfile StudentProfile?
+  facultyProfile FacultyProfile?
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+}
+
+// 2. Department
+model Department {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  description String?
+  createdAt   DateTime         @default(now())
+
+  courses     Course[]
+  subjects    Subject[]
+  students    StudentProfile[]
+  faculty     FacultyProfile[]
+}
+
+// 3. Course
+model Course {
+  id            String           @id @default(uuid())
+  code          String           @unique
+  name          String
+  departmentId  String
+  durationYears Int              @default(4)
+  createdAt     DateTime         @default(now())
+
+  department    Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  semesters     Semester[]
+  students      StudentProfile[]
+}
+
+// 4. Semester
+model Semester {
+  id        String           @id @default(uuid())
+  number    Int
+  courseId  String
+  createdAt DateTime         @default(now())
+
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjects  Subject[]
+  students  StudentProfile[]
+
+  @@unique([courseId, number])
+}
+
+// 5. AcademicSession
+model AcademicSession {
+  id              String           @id @default(uuid())
+  name            String           @unique // e.g. "2025-2026"
+  isCurrent       Boolean          @default(false)
+  startDate       DateTime
+  endDate         DateTime
+  createdAt       DateTime         @default(now())
+
+  enrollments     Enrollment[]
+  facultySubjects FacultySubject[]
+  examinations    Examination[]
+}
+
+// 6. Subject
+model Subject {
+  id              String           @id @default(uuid())
+  code            String           @unique
+  name            String
+  credits         Int              @default(3)
+  departmentId    String
+  semesterId      String
+  createdAt       DateTime         @default(now())
+
+  department      Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  semester        Semester         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  enrollments     Enrollment[]
+  facultySubjects FacultySubject[]
+  examinations    Examination[]
+  questions       QuestionBank[]
+}
+
+// 7. StudentProfile
+model StudentProfile {
+  id                String        @id @default(uuid())
+  userId            String        @unique
+  enrollmentNumber  String        @unique
+  rollNumber        String        @unique
+  departmentId      String
+  courseId          String
+  currentSemesterId String
+  createdAt         DateTime      @default(now())
+
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department        Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  course            Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  currentSemester   Semester      @relation(fields: [currentSemesterId], references: [id], onDelete: Cascade)
+  enrollments       Enrollment[]
+  attempts          ExamAttempt[]
+}
+
+// 8. FacultyProfile
+model FacultyProfile {
+  id           String           @id @default(uuid())
+  userId       String           @unique
+  employeeId   String           @unique
+  departmentId String
+  designation  String           @default("Assistant Professor")
+  createdAt    DateTime         @default(now())
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  subjects     FacultySubject[]
+  examinations Examination[]
+  evaluations  ManualEvaluation[]
+  questions    QuestionBank[]
+}
+
+// 9. Enrollment
+model Enrollment {
+  id         String          @id @default(uuid())
+  studentId  String
+  subjectId  String
+  sessionId  String
+  enrolledAt DateTime        @default(now())
+
+  student    StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject    Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  session    AcademicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, subjectId, sessionId])
+}
+
+// 10. FacultySubject
+model FacultySubject {
+  id         String          @id @default(uuid())
+  facultyId  String
+  subjectId  String
+  sessionId  String
+  assignedAt DateTime        @default(now())
+
+  faculty    FacultyProfile  @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  subject    Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  session    AcademicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([facultyId, subjectId, sessionId])
+}
+
+// 11. Examination
+model Examination {
+  id                  String                @id @default(uuid())
+  title               String
+  description         String?
+  subjectId           String
+  sessionId           String
+  facultyId           String
+  status              String                @default("DRAFT") // DRAFT, PUBLISHED, ACTIVE, COMPLETED, CANCELLED
+  startTime           DateTime
+  endTime             DateTime
+  durationMinutes     Int                   @default(60)
+  totalMarks          Float                 @default(100)
+  passingMarks        Float                 @default(40)
+  negativeMarking     Boolean               @default(false)
+  negativeMarkValue   Float                 @default(0)
+  randomizeQuestions  Boolean               @default(false)
+  randomizeOptions    Boolean               @default(false)
+  maxAttempts         Int                   @default(1)
+  isPublished         Boolean               @default(false)
+  resultsPublished    Boolean               @default(false)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  subject             Subject               @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  session             AcademicSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  faculty             FacultyProfile        @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  questions           ExaminationQuestion[]
+  attempts            ExamAttempt[]
+  publications        ResultPublication[]
+}
+
+// 12. QuestionBank
+model QuestionBank {
+  id             String                @id @default(uuid())
+  subjectId      String
+  facultyId      String
+  type           String                // MCQ_SINGLE, MCQ_MULTIPLE, TRUE_FALSE, SHORT_ANSWER, DESCRIPTIVE, CODING
+  title          String
+  content        String
+  marks          Float                 @default(1)
+  negativeMarks  Float                 @default(0)
+  difficulty     String                @default("MEDIUM") // EASY, MEDIUM, HARD
+  explanation    String?
+  keywords       String?               // JSON array string of keywords for auto-grading assistance
+  rubricJson     String?               // Rubric criteria JSON for descriptive questions
+  codingDetails  String?               // JSON string: { languageTemplates: {}, allowedLanguages: [], timeLimitSec: 2, memoryLimitMb: 128 }
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  subject        Subject               @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  faculty        FacultyProfile        @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  options        QuestionOption[]
+  testCases      CodingTestCase[]
+  examQuestions  ExaminationQuestion[]
+  answers        StudentAnswer[]
+}
+
+// 13. ExaminationQuestion
+model ExaminationQuestion {
+  id             String        @id @default(uuid())
+  examinationId  String
+  questionBankId String
+  orderIndex     Int           @default(0)
+  marksOverride  Float?
+
+  examination    Examination   @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  questionBank   QuestionBank  @relation(fields: [questionBankId], references: [id], onDelete: Cascade)
+
+  @@unique([examinationId, questionBankId])
+}
+
+// 14. QuestionOption
+model QuestionOption {
+  id         String       @id @default(uuid())
+  questionId String
+  text       String
+  isCorrect  Boolean      @default(false)
+  orderIndex Int          @default(0)
+
+  question   QuestionBank @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// 15. CodingTestCase
+model CodingTestCase {
+  id             String       @id @default(uuid())
+  questionId     String
+  input          String
+  expectedOutput String
+  isSample       Boolean      @default(false)
+  isHidden       Boolean      @default(false)
+  marksWeight    Float        @default(1.0)
+
+  question       QuestionBank @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// 16. ExamAttempt
+model ExamAttempt {
+  id              String             @id @default(uuid())
+  examinationId   String
+  studentId       String
+  attemptNumber   Int                @default(1)
+  startedAt       DateTime           @default(now())
+  submittedAt     DateTime?
+  expiresAt       DateTime
+  status          String             @default("IN_PROGRESS") // IN_PROGRESS, SUBMITTED, AUTO_SUBMITTED, CANCELLED
+  ipAddress       String?
+  tabSwitchCount  Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  examination     Examination        @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  student         StudentProfile     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers         StudentAnswer[]
+  codingSubmissions CodingSubmission[]
+  gradingResult   GradingResult?
+  evaluations     ManualEvaluation[]
+
+  @@unique([examinationId, studentId, attemptNumber])
+}
+
+// 17. StudentAnswer
+model StudentAnswer {
+  id                String       @id @default(uuid())
+  attemptId         String
+  questionId        String
+  selectedOptionIds String?      // JSON string array e.g. ["opt1", "opt2"]
+  textAnswer        String?
+  codeAnswer        String?
+  codeLanguage      String?
+  savedAt           DateTime     @default(now())
+  isMarkedForReview Boolean      @default(false)
+  marksAwarded      Float?
+  evaluationComment String?
+
+  attempt           ExamAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question          QuestionBank @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+}
+
+// 18. CodingSubmission
+model CodingSubmission {
+  id              String      @id @default(uuid())
+  attemptId       String
+  questionId      String
+  sourceCode      String
+  language        String      // python, cpp, java
+  status          String      @default("PENDING") // PENDING, RUNNING, ACCEPTED, WRONG_ANSWER, TIME_LIMIT_EXCEEDED, COMPILATION_ERROR, RUNTIME_ERROR
+  testsPassed     Int         @default(0)
+  totalTests      Int         @default(0)
+  executionTimeMs Float       @default(0)
+  memoryUsageKb   Float       @default(0)
+  feedback        String?     // JSON report of tests
+  submittedAt     DateTime    @default(now())
+
+  attempt         ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+}
+
+// 19. GradingResult
+model GradingResult {
+  id            String      @id @default(uuid())
+  attemptId     String      @unique
+  totalObtained Float       @default(0)
+  totalPossible Float       @default(0)
+  percentage    Float       @default(0)
+  isPassed      Boolean     @default(false)
+  gradedAt      DateTime    @default(now())
+  isModerated   Boolean     @default(false)
+  moderatedBy   String?
+  auditNotes    String?
+
+  attempt       ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+}
+
+// 20. ManualEvaluation
+model ManualEvaluation {
+  id              String         @id @default(uuid())
+  attemptId       String
+  questionId      String
+  evaluatorId     String
+  marksAwarded    Float          @default(0)
+  rubricScores    String?        // JSON string of criteria scores
+  feedback        String?
+  evaluatedAt     DateTime       @default(now())
+
+  attempt         ExamAttempt    @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  evaluator       FacultyProfile @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+}
+
+// 21. ResultPublication
+model ResultPublication {
+  id                      String      @id @default(uuid())
+  examinationId           String      @unique
+  publishedBy             String
+  publishedAt             DateTime    @default(now())
+  releaseAnswersToStudents Boolean    @default(true)
+
+  examination             Examination @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+}
+
+// 22. Notification
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, EXAM_PUBLISHED, EXAM_REMINDER, RESULT_PUBLISHED
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 23. AuditLog
+model AuditLog {
+  id           String   @id @default(uuid())
+  userId       String?
+  action       String   // e.g. "USER_LOGIN", "EXAM_PUBLISH", "GRADE_SUBMIT", "SUSPICIOUS_TAB_SWITCH"
+  resource     String   // e.g. "Examination", "Auth", "ExamAttempt"
+  resourceId   String?
+  ipAddress    String?
+  metadataJson String?
+  timestamp    DateTime @default(now())
+
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}

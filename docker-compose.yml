@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Relational Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: campusexam-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: campusexam
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Background Jobs & Real-Time Caching
+  redis:
+    image: redis:7-alpine
+    container_name: campusexam-redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # CampusExam Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: campusexam-backend
+    restart: always
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://postgres:postgrespassword@postgres:5432/campusexam?schema=public"
+      JWT_SECRET: "campusexam_enterprise_jwt_secret_key_prod_2026"
+      JWT_EXPIRES_IN: "7d"
+      CLIENT_ORIGIN: "http://localhost:5173"
+      SANDBOX_EXECUTION_ENABLED: "true"
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # CampusExam Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: campusexam-frontend
+    restart: always
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
